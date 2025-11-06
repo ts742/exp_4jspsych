@@ -1,0 +1,277 @@
+<html>
+  <head>
+  <meta charset="UTF-8" />
+  <!-- すべて ../ や 先頭の / を外して相対パスに -->
+  <script src="jspsych/dist/jspsych.js"></script>
+  <script src="jspsych/dist/plugin-survey-html-form.js"></script>
+  <script src="jspsych/dist/plugin-image-button-response.js"></script>
+  <script src="jspsych/dist/plugin-html-keyboard-response.js"></script>
+  <script src="jspsych/dist/plugin-html-button-response.js"></script>
+  <script src="jspsych/dist/plugin-preload.js"></script>
+  <link rel="stylesheet" href="jspsych/dist/jspsych.css" />
+
+  <style>
+    .jspsych-btn { font-size: 22px; padding: 16px 28px; }
+  </style>
+  </head>
+  <body></body>
+  <script>
+// ① フラグを用意
+  let aborted = false;       // Escなどで中断されたか
+  let consentGiven = false;  // 同意が取れたか
+
+
+// ② 初期化：終了時の保存を条件付きに
+  const jsPsych = initJsPsych({
+    on_finish: () => {
+      // 同意あり ＆ 中断なし のときだけ保存
+      if (consentGiven && !aborted) {
+        const fname = `data_${new Date().toISOString().replace(/[:.]/g,'-')}.csv`;
+        jsPsych.data.get().localSave('csv', fname);
+      }
+      // それ以外（中断・不同意）は保存しない
+    }
+  });
+
+// URLパラメータ pid があればそれを採用（例：?pid=ABC123）なければランダム
+const subject_id =
+  jsPsych.data.getURLVariable('pid') || jsPsych.randomization.randomID(8);
+
+// 参加者IDと開始時刻を全データに付与
+jsPsych.data.addProperties({
+  subject_id: subject_id,
+  session_started_at: new Date().toISOString()
+});
+
+
+// Escで中断（※フラグも立てる）
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    aborted = true;
+    jsPsych.endExperiment('参加者がEscキーで中断しました。');
+  }
+});
+
+
+/* ========== 刺激リスト（画像はこのHTMLと同じ exp フォルダ内） ========== */
+const face_images = [
+  'exp/m_ag.png','exp/m_dis.png','exp/m_mask_ag.png','exp/m_mask_dis.png',
+  'exp/m_com_ag.png','exp/m_com_dis.png','exp/m_mask_com_ag.png','exp/m_mask_com_dis.png',
+  'exp/f_ag.png','exp/f_com_ag.png','exp/f_com_dis.png','exp/f_dis.png',
+  'exp/f_mask_ag.png','exp/f_mask_com_ag.png','exp/f_mask_com_dis.png','exp/f_mask_dis.png'
+];
+
+
+// 回答ボタン（ここを参照して正誤判定）
+    const EMO_CHOICES = ['怒り','嫌悪'];
+
+
+/* ========== プリロード ========== */
+const preload = {
+  type: jsPsychPreload,
+  images: face_images
+};
+
+
+// --- 同意画面（最初に実行） ---
+const consent = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus: `
+    <div style="max-width:800px;margin:0 auto;text-align:left;line-height:1.7">
+      <h2>実験への参加について</h2>
+      <ul>
+        <li>本実験への参加は <b>任意</b> です。いつでも中断できます。</li>
+        <li><b>なるべく静かな環境</b> で実施してください。</li>
+        <li>中断したい場合は <b>Escキー</b> を押すと即時終了します。</li>
+        <li><b>個人情報は保護</b> され、研究目的以外には使用しません。</li>
+      </ul>
+      <p>上記に同意しますか？</p>
+    </div>
+  `,
+  choices: ['同意する', '同意しない'],
+  button_html: [
+    '<button class="jspsych-btn">%choice%</button>',
+    '<button class="jspsych-btn">%choice%</button>'
+  ],
+  data: { task: 'consent' },
+  on_finish: (data) => {
+    // ここで必ずフラグを更新（同意=0番ボタン）
+    consentGiven = (data.response === 0);
+    data.consent = consentGiven;
+
+    if (!consentGiven) {
+      aborted = true; // 保存抑止フラグ（任意）
+      jsPsych.endExperiment('不同意のため、実験を終了しました。ご協力ありがとうございました。');
+    }
+  }
+};
+
+// 年齢入力：同意の直後に実施
+const age_form = {
+  type: jsPsychSurveyHtmlForm,
+  preamble: '<p>年齢（半角数字）を入力してください。</p>',
+  html: `
+    <input name="age" type="number" min="10" max="100" required
+           style="font-size:20px;width:120px;padding:6px;">
+  `,
+  button_label: '次へ',
+  on_finish: (data) => {
+    // 数値に変換して全データへ付与（CSVの全行に age 列が入る）
+    const age = Number(data.response.age);
+    jsPsych.data.addProperties({ age: age });
+  }
+};
+
+// 説明（スペースで開始
+
+const instruction = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus:
+    'これから画面上に顔画像が表示されます。<br>' +
+    '提示された顔画像が示す表情を「怒り」「嫌悪」から選んでください。<br>' +
+    '練習試行4試行の後、本試行に入ります。<br><br>' +
+    '「開始」ボタン か スペースキー を押すと開始します。',
+  choices: ['開始'],
+  on_start:()=>{
+    // スペースキー押したらこのtrialを終了＝次へ進める
+    document.addEventListener('keydown', spaceStartHandler);
+  },
+  on_finish:()=>{
+    document.removeEventListener('keydown', spaceStartHandler);
+  }
+};
+
+function spaceStartHandler(e){
+  if(e.code === "Space"){
+    jsPsych.finishTrial();
+  }
+}
+
+  /* ========== 試行テンプレ（先に定義！） ========== */
+    const trial_template = {
+      type: jsPsychImageButtonResponse,
+      stimulus_width: 650,
+      stimulus_height: 450,
+      choices: EMO_CHOICES,
+      prompt: '<p>この顔の表情は何ですか</p>',
+      on_finish: (data) => {
+        const stim = data.stimulus;         // 例: m_ag.png
+        const respIdx = data.response;      // 0 or 1
+        const respLabel = EMO_CHOICES[respIdx];
+
+        let correctAns = null;
+        if (stim.includes('ag')) correctAns = '怒り';
+        else if (stim.includes('dis')) correctAns = '嫌悪';
+
+        data.correct = (respLabel === correctAns);
+      }
+    };  
+
+
+// 4枚ランダム抽出 → 練習画像
+const practice_images = jsPsych.randomization.sampleWithoutReplacement(face_images, 4);
+
+// 練習 trial 4個生成
+const practice_trials = practice_images.map(img => ({
+  ...trial_template,
+  stimulus: img,
+  data: { task: 'practice', stimulus: img }
+}));
+
+// 本試行前の告知 2秒
+const before_main = {
+  type: jsPsychHtmlKeyboardResponse,
+  stimulus: '<p>これから本試行に入ります</p>',
+  choices: "NO_KEYS",   // キー入力不要
+  trial_duration: 2000  // 2秒提示
+};
+
+
+/* ========== 本試行 16×6＝96 試行をランダム生成 ========== */
+
+const repeated_images = jsPsych.randomization.repeat(face_images, 6);
+    const main_trials = repeated_images.map(img => ({
+      ...trial_template,
+      stimulus: img,
+      data: { task: 'main', stimulus: img }
+    }));
+
+// ── マスク有無と、マスク有の内訳（怒り/嫌悪/合成怒り/合成嫌悪）の正答率をCSVに追記 ──
+// ── 全体（mask有/無）＋ 8条件（emotion×mask×replace）の正答率（％）をCSVに追記 ──
+// ── 全体（mask有/無）＋ 8条件（emotion×mask×replace）の正答率（0〜1）を保存 ──
+const summary_store = {
+  type: jsPsychHtmlKeyboardResponse,
+  stimulus: '',
+  choices: 'NO_KEYS',
+  trial_duration: 10,
+  on_start: () => {
+
+    const trials = jsPsych.data.get().filter({ task: 'main' }).values();
+
+    const parse = (s) => ({
+      mask:    s.includes('mask') ? 'on'  : 'off',
+      replace: s.includes('com')  ? 'on'  : 'off',
+      emo:     s.includes('ag')   ? 'ag'  : (s.includes('dis') ? 'dis' : 'unknown')
+    });
+
+    const B = {
+      mask_on:  { n:0, c:0 },
+      mask_off: { n:0, c:0 },
+      on_ag_on:    { n:0, c:0 },
+      on_ag_off:   { n:0, c:0 },
+      on_dis_on:   { n:0, c:0 },
+      on_dis_off:  { n:0, c:0 },
+      off_ag_on:   { n:0, c:0 },
+      off_ag_off:  { n:0, c:0 },
+      off_dis_on:  { n:0, c:0 },
+      off_dis_off: { n:0, c:0 },
+    };
+
+    for (const t of trials) {
+      const stim = String(t.stimulus || '');
+      const ok   = !!t.correct;
+      const f    = parse(stim);
+
+      if (f.mask === 'on') { B.mask_on.n++;  if (ok) B.mask_on.c++; }
+      else                 { B.mask_off.n++; if (ok) B.mask_off.c++; }
+
+      const key = (f.mask==='on'?'on':'off') + '_' +
+                  (f.emo==='ag'?'ag':'dis') + '_' +
+                  (f.replace==='on'?'on':'off');
+
+      if (B[key]) { B[key].n++; if (ok) B[key].c++; }
+    }
+
+    const r = (c,n) => (n ? c/n : 0);   // ← 0〜1 ratio
+
+    jsPsych.data.addProperties({
+      acc_mask_on:  r(B.mask_on.c, B.mask_on.n),
+      acc_mask_off: r(B.mask_off.c, B.mask_off.n),
+
+      acc_mask_on_ag_replace_on:    r(B.on_ag_on.c,    B.on_ag_on.n),
+      acc_mask_on_ag_replace_off:   r(B.on_ag_off.c,   B.on_ag_off.n),
+      acc_mask_on_dis_replace_on:   r(B.on_dis_on.c,   B.on_dis_on.n),
+      acc_mask_on_dis_replace_off:  r(B.on_dis_off.c,  B.on_dis_off.n),
+
+      acc_mask_off_ag_replace_on:   r(B.off_ag_on.c,   B.off_ag_on.n),
+      acc_mask_off_ag_replace_off:  r(B.off_ag_off.c,  B.off_ag_off.n),
+      acc_mask_off_dis_replace_on:  r(B.off_dis_on.c,  B.off_dis_on.n),
+      acc_mask_off_dis_replace_off: r(B.off_dis_off.c, B.off_dis_off.n),
+    });
+  }
+};
+
+/* ========== 終了メッセージ ========== */
+
+const debrief = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus: '<p>これで実験は終了です。ご協力ありがとうございました。</p>',
+  choices: ['終了']
+};
+
+
+/* ========== 実行（同意→プリロード→説明→96試行→終了） ========== */
+
+jsPsych.run([consent,age_form, preload, instruction,...practice_trials,before_main, ...main_trials,summary_store, debrief]) 
+</script>
+</html>
