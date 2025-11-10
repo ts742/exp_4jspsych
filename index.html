@@ -16,7 +16,45 @@
   </head>
   <body></body>
   <script>
-  const SHEETS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzuqudjw65xh69tl5V0bYmZFgHuIqYXEbslyIsb_sh-VnwAUetDLSViJjZaaLQbVGYTRg/exec'; 
+  const SHEETS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzND8PQQWCLwM5PSH2ZgmPIJeb76KTRUfHYWvZrwbDI8sgt3Z0CsXpJg6nydb_YtRme/exec'; 
+
+async function postCsv(url){
+  const csv = jsPsych.data.get().csv();
+  console.log('csv bytes ≈', new Blob([csv]).size);
+
+  // 行単位で ~24KB 目安に分割。先頭チャンクのみヘッダ付き
+  const MAX = 24000;
+  const lines = csv.split('\n');
+  const header = lines.shift(); // 先頭行をヘッダとして抜く
+
+  let chunks = [];
+  let chunk = header + '\n';
+  let size = chunk.length;
+
+  for (const line of lines) {
+    if (!line) continue;
+    const row = line + '\n';
+    if (size + row.length > MAX) {
+      chunks.push(chunk);          // 以降のチャンクはヘッダ無し
+      chunk = row;
+      size = row.length;
+    } else {
+      chunk += row;
+      size += row.length;
+    }
+  }
+  if (chunk) chunks.push(chunk);
+
+  // urlencoded で順次POST
+  for (const part of chunks) {
+    const body = 'csv=' + encodeURIComponent(part);
+    await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
+      body
+    });
+  }
+}
     
 // ① フラグを用意
   let aborted = false;       // Escなどで中断されたか
@@ -26,19 +64,7 @@
 // ② 初期化：終了時の保存を条件付きに
  const jsPsych = initJsPsych({
   on_finish: () => {
-    if (consentGiven && !aborted) {
-
-      const csv = jsPsych.data.get().csv();
-      const body = 'csv=' + encodeURIComponent(csv);
-
-      fetch(SHEETS_WEBAPP_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-        body,
-        keepalive: true
-      });
-    }
+    // ここでは送らない
   }
 });
 
@@ -270,6 +296,19 @@ const summary_store = {
   }
 };
 
+const upload_trial = {
+  type: jsPsychHtmlKeyboardResponse,
+  stimulus: '<p>データ送信中です。画面を閉じないでください…</p>',
+  choices: 'NO_KEYS',
+  on_start: async () => {
+    if (consentGiven && !aborted) {    // 同意の条件は維持
+      try { await postCsv(SHEETS_WEBAPP_URL); }
+      catch(e){ console.log('upload error', e); }
+    }
+  },
+  trial_duration: 2500  // 回線遅延のバッファ
+};
+    
 /* ========== 終了メッセージ ========== */
 
 const debrief = {
@@ -281,10 +320,11 @@ const debrief = {
 
 /* ========== 実行（同意→プリロード→説明→96試行→終了） ========== */
 
-jsPsych.run([consent,age_form, preload, instruction,...practice_trials,before_main, ...main_trials,summary_store, debrief]) 
+jsPsych.run([consent,age_form, preload, instruction,...practice_trials,before_main, ...main_trials,summary_store,upload_trial,debrief]) 
 </script>
 
 </html>
+
 
 
 
