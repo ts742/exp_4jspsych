@@ -300,13 +300,18 @@ const upload_trial = {
   type: jsPsychHtmlKeyboardResponse,
   stimulus: '<p>データ送信中です。画面を閉じないでください…</p>',
   choices: 'NO_KEYS',
-  on_start: async () => {
-    if (consentGiven && !aborted) {    // 同意の条件は維持
-      try { await postCsv(SHEETS_WEBAPP_URL); }
-      catch(e){ console.log('upload error', e); }
-    }
-  },
-  trial_duration: 2500  // 回線遅延のバッファ
+  on_load: () => {
+    (async () => {
+      try {
+        if (consentGiven && !aborted) {
+          await postCsv(SHEETS_WEBAPP_URL);
+        }
+      } catch(e) {
+        console.log('upload error', e);
+      }
+      jsPsych.finishTrial(); // 送信が終わってから次へ
+    })();
+  }
 };
     
 /* ========== 終了メッセージ ========== */
@@ -324,6 +329,7 @@ jsPsych.run([consent,age_form, preload, instruction,...practice_trials,before_ma
 </script>
 
 </html>
+
 
 
 
