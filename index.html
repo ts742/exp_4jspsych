@@ -59,7 +59,7 @@ async function postCsv(url){
     body
   });
 }
-    
+}   
 // ① フラグを用意
   let aborted = false;       // Escなどで中断されたか
   let consentGiven = false;  // 同意が取れたか
@@ -333,6 +333,7 @@ jsPsych.run([consent,age_form, preload, instruction,...practice_trials,before_ma
 </script>
 
 </html>
+
 
 
 
