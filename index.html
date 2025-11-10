@@ -24,23 +24,20 @@
 
 
 // ② 初期化：終了時の保存を条件付きに
-  const jsPsych = initJsPsych({
+ const jsPsych = initJsPsych({
   on_finish: () => {
     if (consentGiven && !aborted) {
-      // 送る内容：全データCSV（ヘッダー付き）。GAS側で2回目以降はヘッダーを自動で落とす。
-      const csv = jsPsych.data.get().csv();
 
-      // 送信（no-corsでOK。成功可否は返せないが実務上充分）
+      const csv = jsPsych.data.get().csv();
+      const body = 'csv=' + encodeURIComponent(csv);
+
       fetch(SHEETS_WEBAPP_URL, {
         method: 'POST',
         mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: csv
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body,
+        keepalive: true
       });
-
-      // 参加者ローカル保存は不要なら削除。必要なら併用可。
-      // const fname = `data_${new Date().toISOString().replace(/[:.]/g,'-')}.csv`;
-      // jsPsych.data.get().localSave('csv', fname);
     }
   }
 });
@@ -288,5 +285,6 @@ jsPsych.run([consent,age_form, preload, instruction,...practice_trials,before_ma
 </script>
 
 </html>
+
 
 
