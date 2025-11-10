@@ -47,6 +47,7 @@ async function postCsv(url){
 
   // urlencoded で順次POST
   for (const part of chunks) {
+    console.log('chunk bytes ≈', new Blob([part]).size);
     const body = 'csv=' + encodeURIComponent(part);
     await fetch(url, {
       method: 'POST',
@@ -329,6 +330,7 @@ jsPsych.run([consent,age_form, preload, instruction,...practice_trials,before_ma
 </script>
 
 </html>
+
 
 
 
