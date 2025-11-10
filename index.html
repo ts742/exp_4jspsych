@@ -16,6 +16,8 @@
   </head>
   <body></body>
   <script>
+  const SHEETS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyiC2VJmVb0UNfytylv_871h5CigFOfxeGVy1HW3EBCgi4pgw-TqETXm-fQxKYc3RHUBw/exec'; 
+    
 // ① フラグを用意
   let aborted = false;       // Escなどで中断されたか
   let consentGiven = false;  // 同意が取れたか
@@ -23,15 +25,25 @@
 
 // ② 初期化：終了時の保存を条件付きに
   const jsPsych = initJsPsych({
-    on_finish: () => {
-      // 同意あり ＆ 中断なし のときだけ保存
-      if (consentGiven && !aborted) {
-        const fname = `data_${new Date().toISOString().replace(/[:.]/g,'-')}.csv`;
-        jsPsych.data.get().localSave('csv', fname);
-      }
-      // それ以外（中断・不同意）は保存しない
+  on_finish: () => {
+    if (consentGiven && !aborted) {
+      // 送る内容：全データCSV（ヘッダー付き）。GAS側で2回目以降はヘッダーを自動で落とす。
+      const csv = jsPsych.data.get().csv();
+
+      // 送信（no-corsでOK。成功可否は返せないが実務上充分）
+      fetch(SHEETS_WEBAPP_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: csv
+      });
+
+      // 参加者ローカル保存は不要なら削除。必要なら併用可。
+      // const fname = `data_${new Date().toISOString().replace(/[:.]/g,'-')}.csv`;
+      // jsPsych.data.get().localSave('csv', fname);
     }
-  });
+  }
+});
 
 // URLパラメータ pid があればそれを採用（例：?pid=ABC123）なければランダム
 const subject_id =
@@ -274,4 +286,5 @@ const debrief = {
 
 jsPsych.run([consent,age_form, preload, instruction,...practice_trials,before_main, ...main_trials,summary_store, debrief]) 
 </script>
+
 </html>
