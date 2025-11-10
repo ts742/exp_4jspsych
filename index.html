@@ -16,7 +16,7 @@
   </head>
   <body></body>
   <script>
-  const SHEETS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxEzds0TLuipImiNKXooQ-gNpns0NO2AJYLNUAa_J9OoDyCB0m0bOi3mzcGyKQR6OfthQ/exec'; 
+  const SHEETS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbw3ZM1eYcfixfK9opjkPR1zMuIWu0AaATBoaLUjvQhN64_Nj59RHcEft3Lfs6UEXv2MDw/exec'; 
 
 async function postCsv(url){
   const csv = jsPsych.data.get().csv();
@@ -46,15 +46,18 @@ async function postCsv(url){
   if (chunk) chunks.push(chunk);
 
   // urlencoded で順次POST
-  for (const part of chunks) {
-    console.log('chunk bytes ≈', new Blob([part]).size);
-    const body = 'csv=' + encodeURIComponent(part);
-    await fetch(url, {
-      method: 'POST',
-      headers: {'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
-      body
-    });
-  }
+ for (let i = 0; i < chunks.length; i++) {
+  const part = chunks[i];
+  console.log('chunk bytes ≈', new Blob([part]).size);
+  const body =
+    'csv=' + encodeURIComponent(part) +
+    '&has_header=' + (i === 0 ? '1' : '0');
+
+  await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
+    body
+  });
 }
     
 // ① フラグを用意
@@ -330,6 +333,7 @@ jsPsych.run([consent,age_form, preload, instruction,...practice_trials,before_ma
 </script>
 
 </html>
+
 
 
 
